@@ -9,12 +9,10 @@
 #include <Adafruit_NeoPixel.h>
 #include "OneButton.h"
 
-
-
 #define TRIGGER_PIN    7   // Trigger
 #define SELECTOR_PIN   8   // Selector
-#define PIXEL_PIN      9   // NeoPixels.
-#define RUMBLE_PIN     10  // Motor.
+#define PIXEL_PIN      9   // NeoPixels
+#define RUMBLE_PIN     10  // Motor
 #define BOOST_PIN      11  // Boost
 
 #define PIXEL_COUNT 17
@@ -28,20 +26,15 @@
 //   NEO_KHZ800  800 KHz bitstream (e.g. High Density LED strip), correct for neopixel stick
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-bool selectorStatus = false;
 bool shootStatus = false;
 bool boosterStatus = false;
 bool rumbleToggle = false;
 
 uint8_t bootFlag = 0;
-uint8_t shootType = 0;
-uint8_t energyType = 0;
-uint8_t wheelType = 0;
 uint8_t blasterType = 0;
 uint32_t shootColorA;
 uint32_t shootColorB;
 
-uint8_t shootCounter = 0;
 uint8_t shootTimer = 0;
 uint8_t energyCounter = 0;
 uint8_t wheelCounter = 0;
@@ -56,16 +49,13 @@ uint8_t boostLaser = 0;
 uint8_t boostLevel = 32;
 uint8_t rumbleSpeed = 0;
 
-long randNumber;
-
 OneButton selector(SELECTOR_PIN, false);
 OneButton boost(BOOST_PIN, false);
 OneButton trigger(TRIGGER_PIN, false);
 
 void setup() {
+  randomSeed(analogRead(0)); // Initialize random number generator
   selector.attachLongPressStart(startSELECT);
-  //selector.attachDuringLongPress(longPressSELECT);
-  //selector.attachLongPressStop(stopSELECT);
   boost.attachLongPressStart(startBOOST);
   boost.attachDuringLongPress(longPressBOOST);
   boost.attachLongPressStop(stopBOOST);

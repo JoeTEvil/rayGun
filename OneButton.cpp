@@ -16,8 +16,8 @@ OneButton::OneButton(int pin, int activeLow)
 {
   _pin = pin;
 
-  _clickTicks = 100;        // number of millisec that have to pass by before a click is detected.
-  _pressTicks = 200;       // number of millisec that have to pass by before a long button press is detected.
+  _clickTicks = 40;        // number of millisec that have to pass by before a click is detected.
+  _pressTicks = 60;       // number of millisec that have to pass by before a long button press is detected.
  
   _state = 0; // starting with state 0: waiting for button to be pressed
   _isLongPressed = false;  // Keep track of long press state

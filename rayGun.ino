@@ -1,6 +1,6 @@
 // ************************************************************************
 // **                                                                    **
-// **                          RayGun 1.1                                **
+// **                          RayGun 1.2                                **
 // **                          © Pepe Fernández, May 2017                **
 // **                          www.geekmatic.com                         **
 // **                                                                    **
@@ -111,6 +111,7 @@ void startSELECT() {
   } else {
     blasterType ++;
     energyCounter = 0;
+    wheelCounter = 0;
     if(blasterType > 10) { blasterType = 0; }
   }
 }
@@ -210,19 +211,22 @@ void boostControl() {
 }
 
 void rumbleControl() {
-  if(boostLevel <= 16) {
-    rumbleSpeed = (16 - boostLevel) * 13;
-    rumbleCounter ++;
-    if(rumbleCounter>=64) { 
-      rumbleToggle = !rumbleToggle;
-      rumbleCounter = 0;
+  if(boosterStatus == true) {
+    if(boostLevel <= 16) {
+      rumbleSpeed = (16 - boostLevel) * 13;
+      rumbleCounter ++;
+      if(rumbleCounter>=32) { 
+        rumbleToggle = !rumbleToggle;
+        rumbleCounter = 0;
+      }
     }
-    if(rumbleToggle) { analogWrite(RUMBLE_PIN, rumbleSpeed); }
-    if(!rumbleToggle) { analogWrite(RUMBLE_PIN, 0); }
-  } else {
+  } 
+  if(boosterStatus == false || energyBarLeft == 0) {
     rumbleToggle = false;
     rumbleCounter = 0;
     }
+  if(rumbleToggle) { analogWrite(RUMBLE_PIN, rumbleSpeed); }
+  if(!rumbleToggle) { analogWrite(RUMBLE_PIN, 0); }
 }
 
 void counterSystem() {
@@ -272,23 +276,23 @@ void shootMode(int i) {
 
 void energyMode(int i) {
   switch(i){
-    case 0: energyBar(strip.Color(64, 0, 64));    // Purple
+    case 0: energyBar(Wheel(((energyCounter*8) + 191)& 255));    // Purple-Red
             break;
-    case 1: energyBar(strip.Color(64, 64, 0));  // Orange
+    case 1: energyBar(Wheel(((energyCounter*8))& 255));   // Red-Green
             break;
-    case 2: energyBar(strip.Color(0, 64, 64));  // Light Green
+    case 2: energyBar(Wheel(((energyCounter*8) + 64)& 255));   // Yellow-Light Blue
             break;
-    case 3: energyBar(strip.Color(64, 64, 64));  // White
+    case 3: energyBar(strip.Color((energyCounter+1) * 8, (energyCounter+1) * 8, (energyCounter+1) * 8));  // White
             break;
-    case 4: energyBar(strip.Color(127, 0, 0)); // Red
+    case 4: energyBar(strip.Color((energyCounter+1) * 16, 0, 0)); // Red
             break;
-    case 5: energyBar(strip.Color(0,   127,   0)); // Green
+    case 5: energyBar(strip.Color(0,   (energyCounter+1) * 16,   0)); // Green
             break;
-    case 6: energyBar(strip.Color(  0,   0, 127)); // Blue
+    case 6: energyBar(strip.Color(  0,   0, (energyCounter+1) * 16)); // Blue
             break;
-    case 7: energyBar(strip.Color(  127,   0, 127)); // Purple
+    case 7: energyBar(strip.Color(  (energyCounter+1) * 16,   0, (energyCounter+1) * 16)); // Purple
             break;
-    case 8: energyBar(strip.Color(  127,   127, 127)); // White
+    case 8: energyBar(strip.Color(  (energyCounter+1) * 16,   (energyCounter+1) * 16, (energyCounter+1) * 16)); // White
             break;
     case 9: energyBar(Wheel(((wheelCounter * 256 / 8) + mainCounter) & 255));
             break;
@@ -307,15 +311,15 @@ void wheelMode(int i) {
             break;
     case 3: wheelWipe(strip.Color(random(32,64), random(32,64), random(32,64)),strip.Color(random(1,4), 0, random(1,4)));  // White/Purple
             break;
-    case 4: wheelChase(strip.Color(random(32,64), 0, 0)); // Red
+    case 4: wheelWipe(strip.Color(random(32,64), 0, 0),strip.Color(random(1,2), 0, 0)); // Red
             break;
-    case 5: wheelChase(strip.Color(0,   random(32,64),   0)); // Green
+    case 5: wheelWipe(strip.Color(0,   random(32,64),   0),strip.Color(0,   random(1,2),   0)); // Green
             break;
-    case 6: wheelChase(strip.Color(  0,   0, random(32,64))); // Blue
+    case 6: wheelWipe(strip.Color(  0,   0, random(32,64)),strip.Color(  0,   0, random(1,2))); // Blue
             break;
-    case 7: wheelChase(strip.Color(  random(32,64),   0, random(32,64))); // Purple
+    case 7: wheelWipe(strip.Color(  random(32,64),   0, random(32,64)),strip.Color(  random(1,2),   0, random(1,2))); // Purple
             break;
-    case 8: wheelChase(strip.Color(  random(32,64),   random(32,64), random(32,64))); // White
+    case 8: wheelWipe(strip.Color(  random(32,64),   random(32,64), random(32,64)),strip.Color(  random(1,2),   random(1,2), random(1,2))); // White
             break;
     case 9: wheelCycle();
             break;
@@ -335,14 +339,6 @@ void wheelWipe(uint32_t c, uint32_t d) {
 // Slightly different, this makes the rainbow equally distributed throughout
 void wheelCycle() {
       strip.setPixelColor((24-wheelCounter) + 10, Wheel(((wheelCounter * 256 / 24) + mainCounter) & 255));
-}
-
-//Theatre-style crawling lights.
-void wheelChase(uint32_t c) {
-    if (wheelCounter < 24) {
-      strip.setPixelColor((24-wheelCounter) + 9, c);
-    }
-    strip.setPixelColor((24-wheelCounter) + 10, strip.Color(0, 0, 0));
 }
 
 //Theatre-style crawling lights with rainbow effect

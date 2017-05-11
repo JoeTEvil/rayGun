@@ -1,11 +1,13 @@
 // ************************************************************************
 // **                                                                    **
-// **                          RayGun 1.0                                **
+// **                          RayGun 1.1                                **
+// **                          © Pepe Fernández, May 2017                **
+// **                          www.geekmatic.com                         **
 // **                                                                    **
 // ************************************************************************
 
 #include <Adafruit_NeoPixel.h>
-
+#include "OneButton.h"
 
 
 
@@ -26,15 +28,11 @@
 //   NEO_KHZ800  800 KHz bitstream (e.g. High Density LED strip), correct for neopixel stick
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-bool selectorOldState = LOW;
-bool boostOldState = LOW;
-bool triggerOldState = LOW;
-bool shootStatus = LOW;
-bool boosterStatus = LOW;
+bool selectorStatus = false;
+bool shootStatus = false;
+bool boosterStatus = false;
+bool rumbleToggle = false;
 
-uint8_t selector;
-uint8_t boost;
-uint8_t trigger; 
 uint8_t bootFlag = 0;
 uint8_t shootType = 0;
 uint8_t energyType = 0;
@@ -44,11 +42,13 @@ uint32_t shootColorA;
 uint32_t shootColorB;
 
 uint8_t shootCounter = 0;
+uint8_t shootTimer = 0;
 uint8_t energyCounter = 0;
 uint8_t wheelCounter = 0;
 uint8_t mainCounter = 0;
 uint8_t upCounter = 0;
 uint8_t downCounter = 0;
+uint8_t rumbleCounter = 0;
 
 uint8_t shootsFired = 0;
 uint8_t energyBarLeft = 8;
@@ -58,10 +58,21 @@ uint8_t rumbleSpeed = 0;
 
 long randNumber;
 
+OneButton selector(SELECTOR_PIN, false);
+OneButton boost(BOOST_PIN, false);
+OneButton trigger(TRIGGER_PIN, false);
+
 void setup() {
-  pinMode(SELECTOR_PIN, INPUT);
-  pinMode(BOOST_PIN, INPUT);
-  pinMode(TRIGGER_PIN, INPUT);
+  selector.attachLongPressStart(startSELECT);
+  //selector.attachDuringLongPress(longPressSELECT);
+  //selector.attachLongPressStop(stopSELECT);
+  boost.attachLongPressStart(startBOOST);
+  boost.attachDuringLongPress(longPressBOOST);
+  boost.attachLongPressStop(stopBOOST);
+  trigger.attachLongPressStart(startTRG);
+  trigger.attachDuringLongPress(longPressTRG);
+  trigger.attachLongPressStop(stopTRG);
+  
   pinMode(RUMBLE_PIN, OUTPUT);
   randomSeed(analogRead(0));
   strip.begin();
@@ -70,14 +81,14 @@ void setup() {
 
 void loop() {
   if (bootFlag == 0 ) { bootInit(); }
-  selectorStatus();
-  boostStatus();
-  triggerStatus();
+  checkButtons();
   checkShoot(shootColorA, shootColorB);
   checkEnergy();
-  blasterMode(blasterType);
   boostControl();
   rumbleControl();
+  shootMode(blasterType);
+  energyMode(blasterType);
+  wheelMode(blasterType);
   counterSystem();
   strip.show();
   delay(boostLevel);
@@ -87,36 +98,58 @@ void bootInit() {
   bootFlag = 1;
 }
 
-void boostControl() {
-  if(boosterStatus == LOW || energyBarLeft == 0) {
-   upCounter ++;
-   if(upCounter >=8) {
-     boostLevel ++;
-     upCounter = 0;
-   }
-   if (boostLevel >= 32) { boostLevel = 32; }
-  }
-  if(boosterStatus == HIGH) {
-    if (energyBarLeft != 0) {
-      downCounter ++;
-      if(downCounter >=8) {
-        boostLevel --;
-        downCounter = 0;
-      }
-      if (boostLevel == 0) { boostLevel = 1; }
-    }
-  }
-  boostLaser = (64 - boostLevel) * 4;
+void checkButtons() {
+  selector.tick();
+  boost.tick();
+  trigger.tick();
 }
 
-void rumbleControl() {
-  if(boostLevel <= 16) {
-    rumbleSpeed = (16 - boostLevel) * 13;
-    analogWrite(RUMBLE_PIN, rumbleSpeed);
+void startSELECT() {
+   if (energyBarLeft == 0) {
+    energyBarLeft = 8;
+    energyCounter = 0;
+  } else {
+    blasterType ++;
+    energyCounter = 0;
+    if(blasterType > 10) { blasterType = 0; }
   }
 }
+
+void startBOOST() {
+  boosterStatus = true;
+}
+
+void longPressBOOST() {
+  boosterStatus = true;
+}
+
+void stopBOOST() {
+  boosterStatus = false;
+}
+
+void startTRG() {
+  shootStatus = true;
+}
+
+void longPressTRG() {
+  if(boostLevel <= 16) {
+    shootStatus = true;
+  }
+  if(boostLevel > 16) {
+    shootTimer ++;
+    if(shootTimer >= 4) {
+     shootStatus = false; 
+    }
+  }
+}
+
+void stopTRG() {
+  shootStatus = false;
+  shootTimer = 0;
+}
+
 void checkShoot(uint32_t c, uint32_t d) {
-   if(shootStatus == HIGH) {
+   if(shootStatus == true) {
      if (energyBarLeft != 0) {
        strip.setPixelColor(8, c);
        strip.setPixelColor(9, d);
@@ -141,65 +174,55 @@ void checkEnergy() {
     }
   }
 }
-  
-void selectorStatus() {
-  // Get current selector button state.
-  bool selectorNewState = digitalRead(SELECTOR_PIN);
 
-  // Check if state changed from high to low (button press).
-  if (selectorNewState == HIGH && selectorOldState == LOW) {
-    // Short delay to debounce button.
-    delay(20);
-    // Check if button is still low after debounce.
-    selectorNewState = digitalRead(SELECTOR_PIN);
-    if (selectorNewState == HIGH) {
-      if (energyBarLeft == 0) {
-        energyBarLeft = 8;
-      } else {
-        blasterType ++;
-        if(blasterType > 10) {
-          blasterType = 0; }
+void energyBar(uint32_t c) {
+    energyCounter++;
+    if(energyCounter <= energyBarLeft) {
+        strip.setPixelColor(8-energyCounter, c);
+    } else {
+      strip.setPixelColor(8-energyCounter, strip.Color(0, 0, 0));
+    }
+    if(energyCounter > 8) {
+      energyCounter = 0;
+    }
+}
+
+void boostControl() {
+  if(boosterStatus == false || energyBarLeft == 0) {
+   upCounter ++;
+   if(upCounter >=8) {
+     boostLevel ++;
+     upCounter = 0;
+   }
+   if (boostLevel >= 32) { boostLevel = 32; }
+  }
+  if(boosterStatus == true) {
+    if (energyBarLeft != 0) {
+      downCounter ++;
+      if(downCounter >=8) {
+        boostLevel --;
+        downCounter = 0;
       }
+      if (boostLevel == 0) { boostLevel = 4; }
     }
   }
-  // Set the last button state to the old state.
-  selectorOldState = selectorNewState;
+  boostLaser = (64 - boostLevel) * 4;
 }
 
-void boostStatus() {
-  // Get current selector button state.
-  bool boostNewState = digitalRead(BOOST_PIN);
-  // Check if state changed from high to low (button press).
-  if (boostNewState == HIGH && boostOldState == LOW) {
-    // Short delay to debounce button.
-    delay(20);
-    // Check if button is still low after debounce.
-    boostNewState = digitalRead(BOOST_PIN);
-    if (boostNewState == HIGH) {
-      boosterStatus = boostNewState;
+void rumbleControl() {
+  if(boostLevel <= 16) {
+    rumbleSpeed = (16 - boostLevel) * 13;
+    rumbleCounter ++;
+    if(rumbleCounter>=64) { 
+      rumbleToggle = !rumbleToggle;
+      rumbleCounter = 0;
     }
-  }
-  // Set the last button state to the old state.
-  boostOldState = boostNewState;
-  boosterStatus = boostNewState;
-}
-
-void triggerStatus() {
-  // Get current selector button state.
-  bool triggerNewState = digitalRead(TRIGGER_PIN);
-  // Check if state changed from high to low (button press).
-  if (triggerNewState == HIGH && triggerOldState == LOW) {
-    // Short delay to debounce button.
-    delay(20);
-    // Check if button is still low after debounce.
-    triggerNewState = digitalRead(TRIGGER_PIN);
-    if (triggerNewState == HIGH) {
-       shootStatus = triggerNewState;     
+    if(rumbleToggle) { analogWrite(RUMBLE_PIN, rumbleSpeed); }
+    if(!rumbleToggle) { analogWrite(RUMBLE_PIN, 0); }
+  } else {
+    rumbleToggle = false;
+    rumbleCounter = 0;
     }
-  }
-  // Set the last button state to the old state.
-  triggerOldState = triggerNewState;
-  shootStatus = triggerNewState;
 }
 
 void counterSystem() {
@@ -209,54 +232,6 @@ void counterSystem() {
   if (wheelCounter > 24) { wheelCounter = 0; }
 }
 
-void blasterMode(int i) {
-  switch(i){
-    case 0: shootMode(0);
-            energyMode(0);
-            wheelMode(0);    // Purple/Red
-            break;
-    case 1: shootMode(1);
-            energyMode(1);
-            wheelMode(1);   // Orange/Green
-            break;
-    case 2: shootMode(2);
-            energyMode(2);
-            wheelMode(2);   // Light Green/Blue
-            break;
-    case 3: shootMode(3);
-            energyMode(3);
-            wheelMode(3);   // White/Purple
-            break;
-    case 4: shootMode(4);
-            energyMode(4);
-            wheelMode(4); // Red
-            break;
-    case 5: shootMode(5);
-            energyMode(5);
-            wheelMode(5);  // Green
-            break;
-    case 6: shootMode(6);
-            energyMode(6);
-            wheelMode(6);  // Blue
-            break;
-    case 7: shootMode(7);
-            energyMode(7);
-            wheelMode(7);  // Purple
-            break;
-    case 8: shootMode(8);
-            energyMode(8);
-            wheelMode(8);  // White
-            break;
-    case 9: shootMode(9);
-            energyMode(9);
-            wheelMode(9); 
-            break;
-    case 10: shootMode(10);
-            energyMode(10);
-            wheelMode(10); 
-            break;
-  }
-}
 void shootMode(int i) {
   switch(i){
     case 0: shootColorA = strip.Color(255, 0, 255);
@@ -294,6 +269,7 @@ void shootMode(int i) {
             break;
   }
 }
+
 void energyMode(int i) {
   switch(i){
     case 0: energyBar(strip.Color(64, 0, 64));    // Purple
@@ -314,12 +290,13 @@ void energyMode(int i) {
             break;
     case 8: energyBar(strip.Color(  127,   127, 127)); // White
             break;
-    case 9: energyBar(Wheel(mainCounter & 255));
+    case 9: energyBar(Wheel(((wheelCounter * 256 / 8) + mainCounter) & 255));
             break;
-    case 10: energyBar(Wheel(mainCounter & 255));
+    case 10: energyBar(Wheel(((wheelCounter * 256 / 8) + mainCounter) & 255));
             break;
   }
 }
+
 void wheelMode(int i) {
   switch(i){
     case 0: wheelWipe(strip.Color(random(32,64), 0, random(32,64)),strip.Color(random(1,4), 0, 0));    // Purple/Red
@@ -345,18 +322,6 @@ void wheelMode(int i) {
     case 10: wheelChaseRainbow();
             break;
   }
-}
-
-void energyBar(uint32_t c) {
-    energyCounter++;
-    if(energyCounter <= energyBarLeft) {
-        strip.setPixelColor(8-energyCounter, c);
-    } else {
-      strip.setPixelColor(8-energyCounter, strip.Color(0, 0, 0));
-    }
-    if(energyCounter > 8) {
-      energyCounter = 0;
-    }
 }
 
 // Fill the dots one after the other with a color

@@ -19,14 +19,20 @@
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
+OneButton selector(SELECTOR_PIN, false);
+OneButton boost(BOOST_PIN, false);
+OneButton trigger(TRIGGER_PIN, false);
+
 bool shootStatus = false;
 bool boosterStatus = false;
 bool rumbleToggle = false;
+bool fireInTheHole = false;
+bool repeatFire = false;
 
 uint8_t bootFlag = 0;
 uint8_t blasterType = 0;
-uint32_t shootColorA;
-uint32_t shootColorB;
+uint32_t mainFire;
+uint32_t secondaryFire;
 
 uint8_t shootTimer = 0;
 uint8_t energyCounter = 0;
@@ -42,12 +48,17 @@ uint8_t boostLaser = 0;
 uint8_t boostLevel = 32;
 uint8_t rumbleSpeed = 0;
 
-OneButton selector(SELECTOR_PIN, false);
-OneButton boost(BOOST_PIN, false);
-OneButton trigger(TRIGGER_PIN, false);
-
 void setup() {
+    Serial.begin(115200);
+  while (!Serial) {
+    ; // wait for serial port to connect. Needed for native USB port only
+  }
+
+  pinMode(RUMBLE_PIN, OUTPUT);
   randomSeed(analogRead(0)); // Initialize random number generator
+  strip.begin();
+  strip.show(); // Initialize all pixels to 'off'
+  // OneButton Init
   selector.attachLongPressStart(startSELECT);
   boost.attachLongPressStart(startBOOST);
   boost.attachDuringLongPress(longPressBOOST);
@@ -55,20 +66,15 @@ void setup() {
   trigger.attachLongPressStart(startTRG);
   trigger.attachDuringLongPress(longPressTRG);
   trigger.attachLongPressStop(stopTRG);
-  
-  pinMode(RUMBLE_PIN, OUTPUT);
-  randomSeed(analogRead(0));
-  strip.begin();
-  strip.show(); // Initialize all pixels to 'off'
 }
 
 void loop() {
   if (bootFlag == 0 ) { bootInit(); }
   checkButtons();
-  checkShoot(shootColorA, shootColorB);
   checkEnergy();
   boostControl();
   rumbleControl();
+  checkShoot();
   shootMode(blasterType);
   energyMode(blasterType);
   wheelMode(blasterType);
@@ -88,7 +94,7 @@ void checkButtons() {
 }
 
 void startSELECT() {
-   if (energyBarLeft == 0) {
+   if (!energyBarLeft) {
     energyBarLeft = 8;
     energyCounter = 0;
   } else {
@@ -116,41 +122,49 @@ void startTRG() {
 }
 
 void longPressTRG() {
-  if(boostLevel <= 16) {
-    shootStatus = true;
-  }
-  if(boostLevel > 16) {
-    shootTimer ++;
-    if(shootTimer >= 4) {
-     shootStatus = false; 
-    }
-  }
+  repeatFire = true;
 }
 
 void stopTRG() {
   shootStatus = false;
-  shootTimer = 0;
+  repeatFire = false;
 }
 
-void checkShoot(uint32_t c, uint32_t d) {
-   if(shootStatus == true) {
-     if (energyBarLeft != 0) {
-       strip.setPixelColor(8, c);
-       strip.setPixelColor(9, d);
-       analogWrite(RUMBLE_PIN, 255);
-       strip.show();
-       delay(boostLevel);
-       strip.setPixelColor(8, strip.Color(0, 0, 0));
-       strip.setPixelColor(9, strip.Color(0, 0, 0));
-       analogWrite(RUMBLE_PIN, 0);
-       strip.show();
-       shootsFired ++;
-     }
-   }
+void checkShoot() {
+  if(shootStatus) { 
+    fireInTheHole = true;
+  }
+  if(repeatFire) {
+    shootStatus = false;
+    if(boostLevel <= 16) { fireInTheHole = true; }
+  }
+  if(energyBarLeft) {
+    if(fireInTheHole) {
+      fire(mainFire, secondaryFire, 255);
+      shootTimer ++;
+      if(shootTimer >= 6) { 
+        fire(0, 0, 0);
+        shootTimer = 0;
+        fireInTheHole = false;
+        shootsFired ++;
+      }
+    }
+  }
+  if(!energyBarLeft) {
+    fire(0, 0, 0);
+    shootTimer = 0;
+    fireInTheHole = false;
+  }
+}
+
+void fire(uint32_t main, uint32_t secondary, uint8_t rumble) {
+  strip.setPixelColor(8, main);
+  strip.setPixelColor(9, secondary);
+  analogWrite(RUMBLE_PIN, rumble);
 }
 
 void checkEnergy() {
-  if (shootsFired >= 16) {
+  if (shootsFired >= 6) {
     shootsFired = 0;
     energyBarLeft --;
     if (energyBarLeft <=0) {
@@ -172,7 +186,7 @@ void energyBar(uint32_t c) {
 }
 
 void boostControl() {
-  if(boosterStatus == false || energyBarLeft == 0) {
+  if(!boosterStatus || !energyBarLeft) {
    upCounter ++;
    if(upCounter >=8) {
      boostLevel ++;
@@ -180,36 +194,34 @@ void boostControl() {
    }
    if (boostLevel >= 32) { boostLevel = 32; }
   }
-  if(boosterStatus == true) {
+  if(boosterStatus) {
     if (energyBarLeft != 0) {
       downCounter ++;
       if(downCounter >=8) {
         boostLevel --;
         downCounter = 0;
       }
-      if (boostLevel == 0) { boostLevel = 4; }
+      if (boostLevel < 6) { boostLevel = 6; }
     }
   }
   boostLaser = (64 - boostLevel) * 4;
 }
 
 void rumbleControl() {
-  if(boosterStatus == true) {
-    if(boostLevel <= 16) {
-      rumbleSpeed = (16 - boostLevel) * 13;
-      rumbleCounter ++;
-      if(rumbleCounter>=32) { 
-        rumbleToggle = !rumbleToggle;
-        rumbleCounter = 0;
-      }
+  if(boostLevel <= 20) {
+    rumbleSpeed = (21 - boostLevel) * 14;
+    rumbleCounter ++;
+    if(rumbleCounter>=12) { 
+      rumbleToggle = !rumbleToggle;
+      rumbleCounter = 0;
     }
-  } 
-  if(boosterStatus == false || energyBarLeft == 0) {
-    rumbleToggle = false;
-    rumbleCounter = 0;
-    }
-  if(rumbleToggle) { analogWrite(RUMBLE_PIN, rumbleSpeed); }
-  if(!rumbleToggle) { analogWrite(RUMBLE_PIN, 0); }
+    if(rumbleToggle) { analogWrite(RUMBLE_PIN, rumbleSpeed); }
+    if(!rumbleToggle) { analogWrite(RUMBLE_PIN, 0); }
+  }
+  if(boostLevel > 20 && rumbleToggle) {
+    rumbleToggle = !rumbleToggle;
+    analogWrite(RUMBLE_PIN, 0);
+  }
 }
 
 void counterSystem() {
@@ -221,38 +233,38 @@ void counterSystem() {
 
 void shootMode(int i) {
   switch(i){
-    case 0: shootColorA = strip.Color(255, 0, 255);
-            shootColorB = strip.Color(boostLaser, 0, 0);    // Purple/Red
+    case 0: mainFire = strip.Color(255, 0, 255);
+            secondaryFire = strip.Color(boostLaser, 0, 0);    // Purple/Red
             break;
-    case 1: shootColorA = strip.Color(255, 255, 0);
-            shootColorB = strip.Color(0, boostLaser, 0);  // Orange/Green
+    case 1: mainFire = strip.Color(255, 255, 0);
+            secondaryFire = strip.Color(0, boostLaser, 0);  // Orange/Green
             break;
-    case 2: shootColorA = strip.Color(0, 255, 255);
-            shootColorB = strip.Color(0, 0, boostLaser);  // Light Green/Blue
+    case 2: mainFire = strip.Color(0, 255, 255);
+            secondaryFire = strip.Color(0, 0, boostLaser);  // Light Green/Blue
             break;
-    case 3: shootColorA = strip.Color(255, 255, 255);
-            shootColorB = strip.Color(boostLaser, 0, boostLaser);  // White/Purple
+    case 3: mainFire = strip.Color(255, 255, 255);
+            secondaryFire = strip.Color(boostLaser, 0, boostLaser);  // White/Purple
             break;
-    case 4: shootColorA = strip.Color(255, 0, 0);
-            shootColorB = strip.Color(boostLaser, 0, 0); // Red
+    case 4: mainFire = strip.Color(255, 0, 0);
+            secondaryFire = strip.Color(boostLaser, 0, 0); // Red
             break;
-    case 5: shootColorA = strip.Color(0,   255,   0);
-            shootColorB = strip.Color(0,   boostLaser,   0); // Green
+    case 5: mainFire = strip.Color(0,   255,   0);
+            secondaryFire = strip.Color(0,   boostLaser,   0); // Green
             break;
-    case 6: shootColorA = strip.Color(  0,   0, 255);
-            shootColorB = strip.Color(  0,   0, boostLaser);  // Blue
+    case 6: mainFire = strip.Color(  0,   0, 255);
+            secondaryFire = strip.Color(  0,   0, boostLaser);  // Blue
             break;
-    case 7: shootColorA = strip.Color(  255,   0, 255);
-            shootColorB = strip.Color(  boostLaser,   0, boostLaser); // Purple
+    case 7: mainFire = strip.Color(  255,   0, 255);
+            secondaryFire = strip.Color(  boostLaser,   0, boostLaser); // Purple
             break;
-    case 8: shootColorA = strip.Color(  255,   255, 255);
-            shootColorB = strip.Color(  boostLaser,   boostLaser, boostLaser);  // White
+    case 8: mainFire = strip.Color(  255,   255, 255);
+            secondaryFire = strip.Color(  boostLaser,   boostLaser, boostLaser);  // White
             break;
-    case 9: shootColorA = Wheel(mainCounter & 255);
-            shootColorB = Wheel(mainCounter & boostLaser);
+    case 9: mainFire = Wheel(mainCounter & 255);
+            secondaryFire = Wheel(mainCounter & boostLaser);
             break;
-    case 10: shootColorA = Wheel(mainCounter & 255);
-             shootColorB  = Wheel( mainCounter & boostLaser);
+    case 10: mainFire = Wheel(mainCounter & 255);
+             secondaryFire  = Wheel( mainCounter & boostLaser);
             break;
   }
 }

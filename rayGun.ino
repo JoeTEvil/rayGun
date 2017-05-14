@@ -49,11 +49,6 @@ uint8_t boostLevel = 32;
 uint8_t rumbleSpeed = 0;
 
 void setup() {
-    Serial.begin(115200);
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
-
   pinMode(RUMBLE_PIN, OUTPUT);
   randomSeed(analogRead(0)); // Initialize random number generator
   strip.begin();
